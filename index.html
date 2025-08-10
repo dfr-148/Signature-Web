@@ -36,7 +36,7 @@
 
   <script>
     // Backend URL dari Apps Script (ganti sesuai deployment baru)
-    const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxX1Q1Nw7fvtFbKZRX-RZT8sKmnRYdbr8rbYTVuMQ5jj108wz4hLfvhb1WqD-zxaE2JSw/exec";
+    const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxg3o0rhsyAw3vonWivaIwO8qSd5N5Jcs9UvtUeHXZ87y78mUBMlAROZA5M8JBsS8tTXA/exec";
 
     // ===== SignaturePadFinal (dari HTML lama) =====
     class Point { constructor(x, y, time){ this.x=x; this.y=y; this.time=time||Date.now(); } velocityFrom(start){ return this.time!==start.time ? this.distanceTo(start)/(this.time-start.time) : 0; } distanceTo(start){ return Math.hypot(this.x-start.x,this.y-start.y); } }
@@ -70,6 +70,7 @@
   </script>
 </body>
 </html>
+
 
 
 

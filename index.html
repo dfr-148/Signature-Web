@@ -56,13 +56,11 @@
       const signature = signaturePad.toDataURL();
       try {
         const res = await fetch(BACKEND_URL, {
-          method: "POST",
-           // simple request -> hindari preflight
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ name, signature })
+          method: 'POST',
+          body: JSON.stringify({ name, signature }) // string biasa
         });
-
         const data = await res.json();
+
         document.getElementById('status').innerText = data.message;
         if(data.status === "success"){ signaturePad.clear(); document.getElementById('name').value = ""; }
       } catch (err) {
@@ -72,6 +70,7 @@
   </script>
 </body>
 </html>
+
 
 
 

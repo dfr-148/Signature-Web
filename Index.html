@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Signature Form</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background-color: #f4f4f5; display: flex; flex-direction: column; align-items: center; user-select: none; }
+    h2 { color: #18181b; }
+    #signature-container { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); border-radius: 8px; overflow: hidden; position: relative; }
+    #signature-pad { cursor: crosshair; display: block; background-color: white; }
+    .input-group { margin-bottom: 15px; width: 400px; }
+    label { display: block; margin-bottom: 5px; font-weight: 500; color: #3f3f46;}
+    input { width: 100%; padding: 8px; font-size: 16px; border-radius: 6px; border: 1px solid #d4d4d8; box-sizing: border-box; }
+    .button-group { margin-top: 15px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; color: white; border-radius: 6px; margin-right: 10px; font-weight: 500; }
+    #save { background-color: #3b82f6; } #save:hover { background-color: #2563eb; }
+    #clear { background-color: #64748b; } #clear:hover { background-color: #475569; }
+    #status { margin-top: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Draw Your Signature</h2>
+  <div class="input-group">
+    <label for="name">Full Name</label>
+    <input type="text" id="name" required>
+  </div>
+  <p>Draw your signature below.</p>
+  <div id="signature-container">
+    <canvas id="signature-pad" width="400" height="200"></canvas>
+  </div>
+  <div class="button-group">
+    <button id="save">Save</button>
+    <button id="clear">Clear</button>
+  </div>
+  <div id="status"></div>
+
+  <script>
+    // Backend URL dari Apps Script (ganti sesuai deployment baru)
+    const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxg3o0rhsyAw3vonWivaIwO8qSd5N5Jcs9UvtUeHXZ87y78mUBMlAROZA5M8JBsS8tTXA/exec";
+
+    // ===== SignaturePadFinal (dari HTML lama) =====
+    class Point { constructor(x, y, time){ this.x=x; this.y=y; this.time=time||Date.now(); } velocityFrom(start){ return this.time!==start.time ? this.distanceTo(start)/(this.time-start.time) : 0; } distanceTo(start){ return Math.hypot(this.x-start.x,this.y-start.y); } }
+    class Bezier { static fromPoints(points){ const C2=this.calculateControlPoints(points[0],points[1],points[2]).c2; const C3=this.calculateControlPoints(points[1],points[2],points[3]).c1; return new Bezier(points[1],C2,C3,points[2]); } static calculateControlPoints(s1,s2,s3){ const dx1=s1.x-s2.x; const dy1=s1.y-s2.y; const dx2=s2.x-s3.x; const dy2=s2.y-s3.y; const m1={x:(s1.x+s2.x)/2,y:(s1.y+s2.y)/2}; const m2={x:(s2.x+s3.x)/2,y:(s2.y+s3.y)/2}; const l1=Math.hypot(dx1,dy1); const l2=Math.hypot(dx2,dy2); const dxm=m1.x-m2.x; const dym=m1.y-m2.y; const k=l2/(l1+l2)||0; const cm={x:m2.x+dxm*k,y:m2.y+dym*k}; const tx=s2.x-cm.x; const ty=s2.y-cm.y; return {c1:new Point(m1.x+tx,m1.y+ty),c2:new Point(m2.x+tx,m2.y+ty)}; } constructor(startPoint,control1,control2,endPoint){ this.startPoint=startPoint; this.control1=control1; this.control2=control2; this.endPoint=endPoint; } length(){ const steps=10; let length=0; let px; let py; for(let i=0;i<=steps;i++){ const t=i/steps; const cx=this._point(t,this.startPoint.x,this.control1.x,this.control2.x,this.endPoint.x); const cy=this._point(t,this.startPoint.y,this.control1.y,this.control2.y,this.endPoint.y); if(i>0){ length+=Math.hypot(cx-px,cy-py); } px=cx; py=cy; } return length; } _point(t,start,c1,c2,end){ return start*(1-t)*(1-t)*(1-t)+3*c1*(1-t)*(1-t)*t+3*c2*(1-t)*t*t+end*t*t*t; } }
+    class SignaturePadFinal { constructor(canvas,options={}){ this.canvas=canvas; this.ctx=canvas.getContext('2d'); this.options={minWidth:0.5,maxWidth:3.0,velocityFilterWeight:0.9,penColor:'#111827',smoothingTakePointsEvery:4,...options}; this.isDrawing=false; this.rawStrokes=[]; this.currentRawStroke=[]; this.lastVelocity=0; this.lastWidth=(this.options.minWidth+this.options.maxWidth)/2; this._handlePointerDown=this._handlePointerDown.bind(this); this._handlePointerMove=this._handlePointerMove.bind(this); this._handlePointerUp=this._handlePointerUp.bind(this); this.clear(); this.listen(); } listen(){ this.canvas.addEventListener('mousedown',this._handlePointerDown); this.canvas.addEventListener('touchstart',this._handlePointerDown,{passive:false}); } clear(){ this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height); this.rawStrokes=[]; this.currentRawStroke=[]; this.lastVelocity=0; this.lastWidth=(this.options.minWidth+this.options.maxWidth)/2; } isEmpty(){ return this.rawStrokes.length===0; } toDataURL(){ return this.canvas.toDataURL('image/png'); } _getPointerPosition(event){ const rect=this.canvas.getBoundingClientRect(); const evt=event.touches?event.touches[0]:event; return new Point(evt.clientX-rect.left,evt.clientY-rect.top); } _handlePointerDown(event){ this.isDrawing=true; this.currentRawStroke=[this._getPointerPosition(event)]; window.addEventListener('mousemove',this._handlePointerMove,{passive:false}); window.addEventListener('mouseup',this._handlePointerUp,{once:true}); window.addEventListener('touchmove',this._handlePointerMove,{passive:false}); window.addEventListener('touchend',this._handlePointerUp,{once:true}); } _handlePointerMove(event){ if(!this.isDrawing) return; event.preventDefault(); const point=this._getPointerPosition(event); if(point.distanceTo(this.currentRawStroke[this.currentRawStroke.length-1])<2) return; this.currentRawStroke.push(point); this._drawLiveStroke(this.currentRawStroke); } _handlePointerUp(){ if(!this.isDrawing) return; this.isDrawing=false; window.removeEventListener('mousemove',this._handlePointerMove); window.removeEventListener('touchmove',this._handlePointerMove); if(this.currentRawStroke.length>1){ this.rawStrokes.push(this.currentRawStroke); } this.currentRawStroke=[]; this._redrawAllStrokesFinal(); } _drawLiveStroke(points){ this._redrawAllStrokesFinal(); this.ctx.strokeStyle=this.options.penColor; this.ctx.fillStyle=this.options.penColor; for(let i=1;i<points.length;i++){ const p1=points[i-1]; const p2=points[i]; const velocity=p2.velocityFrom(p1); this.lastVelocity=this.options.velocityFilterWeight*velocity+(1-this.options.velocityFilterWeight)*this.lastVelocity; const width=Math.max(this.options.maxWidth/(this.lastVelocity+1.5),this.options.minWidth); this.ctx.lineWidth=width; this.ctx.beginPath(); this.ctx.moveTo(p1.x,p1.y); this.ctx.lineTo(p2.x,p2.y); this.ctx.stroke(); } } _redrawAllStrokesFinal(){ this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height); if(this.rawStrokes.length===0) return; this.ctx.fillStyle=this.options.penColor; this.rawStrokes.forEach(stroke=>{ const subsampled=[]; for(let i=0;i<stroke.length;i++){ if(i%this.options.smoothingTakePointsEvery===0){ subsampled.push(stroke[i]); } } if(subsampled.length<2) subsampled.push(stroke[stroke.length-1]); if(subsampled.length<2) return; let lastPoint=subsampled[0]; let lastVelocity=0; let lastWidth=(this.options.minWidth+this.options.maxWidth)/2; for(let i=1;i<subsampled.length;i++){ const point=subsampled[i]; const velocity=point.velocityFrom(lastPoint); const smoothedVelocity=this.options.velocityFilterWeight*velocity+(1-this.options.velocityFilterWeight)*lastVelocity; const width=Math.max(this.options.maxWidth/(smoothedVelocity+1),this.options.minWidth); const curve=Bezier.fromPoints([subsampled[i-2]||subsampled[i-1],subsampled[i-1],point,subsampled[i+1]||point]); this._drawFinalCurve(curve,lastWidth,width); lastPoint=point; lastWidth=width; lastVelocity=smoothedVelocity; } }); } _drawFinalCurve(curve,startWidth,endWidth){ const widthDelta=endWidth-startWidth; const drawSteps=Math.floor(curve.length())*2; this.ctx.beginPath(); for(let i=0;i<drawSteps;i++){ const t=i/drawSteps; const x=curve._point(t,curve.startPoint.x,curve.control1.x,curve.control2.x,curve.endPoint.x); const y=curve._point(t,curve.startPoint.y,curve.control1.y,curve.control2.y,curve.endPoint.y); const width=Math.min(startWidth+(t*t*t)*widthDelta,this.options.maxWidth); this.ctx.moveTo(x,y); this.ctx.arc(x,y,width/2,0,2*Math.PI,false); } this.ctx.closePath(); this.ctx.fill(); } }
+    
+    const signaturePad = new SignaturePadFinal(document.getElementById('signature-pad'));
+    document.getElementById('clear').addEventListener('click',()=>signaturePad.clear());
+
+    document.getElementById('save').addEventListener('click', async () => {
+      if(signaturePad.isEmpty()){ alert("Signature cannot be empty."); return; }
+      const name = document.getElementById('name').value.trim();
+      if(!name){ alert("Full Name is required."); return; }
+
+      document.getElementById('status').innerText = "Processing...";
+
+      const signature = signaturePad.toDataURL();
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: "POST",
+          mode: "cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, signature })
+        });
+        const data = await res.json();
+        document.getElementById('status').innerText = data.message;
+        if(data.status === "success"){ signaturePad.clear(); document.getElementById('name').value = ""; }
+      } catch (err) {
+        document.getElementById('status').innerText = "Error: " + err;
+      }
+    });
+  </script>
+</body>
+</html>
